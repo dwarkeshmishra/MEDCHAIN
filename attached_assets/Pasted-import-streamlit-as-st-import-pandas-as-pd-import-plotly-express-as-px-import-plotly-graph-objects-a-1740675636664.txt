@@ -1,0 +1,722 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import numpy as np
+from datetime import datetime, timedelta
+import uuid
+import os
+import json
+from PIL import Image
+import io
+import base64
+
+# Configuration
+st.set_page_config(page_title="HealthAnalytics Pro", layout="wide", page_icon="🏥")
+
+# Custom CSS for dark theme
+st.markdown("""
+<style>
+    /* Main background */
+    .main, .stApp {
+        background-color: #1E1E2E;
+        color: white;
+    }
+    
+    /* Sidebar styling */
+    section[data-testid="stSidebar"] {
+        background-color: #252638;
+        border-right: 1px solid #3A3A5A;
+    }
+    
+    /* Card styling */
+    div.stMetric, div.stDataFrame {
+        background-color: #252638;
+        padding: 15px;
+        border-radius: 5px;
+        border: 1px solid #3A3A5A;
+    }
+    
+    /* Button styling */
+    button[kind="primary"] {
+        background-color: #4A4A8A;
+        color: white;
+    }
+    
+    /* Text color */
+    h1, h2, h3, p {
+        color: white !important;
+    }
+    
+    /* Chart background */
+    .js-plotly-plot {
+        background-color: #252638;
+    }
+    
+    /* Metric cards */
+    .metric-container {
+        background-color: #252638;
+        border-radius: 5px;
+        padding: 15px;
+        margin-bottom: 10px;
+        border: 1px solid #3A3A5A;
+    }
+    
+    /* Chart containers */
+    .chart-container {
+        background-color: #252638;
+        border-radius: 5px;
+        padding: 15px;
+        margin-bottom: 20px;
+        border: 1px solid #3A3A5A;
+    }
+    
+    /* Logout button */
+    .logout-btn {
+        background-color: #3A3A5A;
+        color: white;
+        border-radius: 5px;
+        padding: 10px 15px;
+        border: none;
+        cursor: pointer;
+    }
+    
+    /* Selectbox */
+    .stSelectbox > div > div {
+        background-color: #252638;
+        color: white;
+    }
+    
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 1px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background-color: #252638;
+        border-radius: 4px 4px 0 0;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: #4A4A8A;
+    }
+    
+    /* Data filters */
+    .filter-container {
+        background-color: #252638;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+        border: 1px solid #3A3A5A;
+    }
+    
+    /* Tables */
+    .dataframe-container {
+        background-color: #252638;
+        border-radius: 5px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border: 1px solid #3A3A5A;
+        overflow-x: auto;
+    }
+    
+    /* Modals */
+    .modal {
+        background-color: #252638;
+        border-radius: 5px;
+        padding: 20px;
+        border: 1px solid #3A3A5A;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Initialize session state
+if 'user' not in st.session_state:
+    st.session_state.user = None
+
+# Role-Based Access Control (RBAC) Configuration
+USERS = {
+    "admin": {"password": "1234", "role": "Admin", "name": "Admin User"},
+    "doctor": {"password": "1234", "role": "Doctor", "name": "Dr. Smith"},
+    "patient": {"password": "1234", "role": "Patient", "name": "Patient 610"}
+}
+
+# Load or generate data
+@st.cache_data
+def load_data():
+    try:
+        # Try to load existing datasets
+        patients = pd.read_csv('indian_patients.csv')
+        medical = pd.read_csv('indian_medical_records.csv')
+        hospitals = pd.read_csv('indian_hospital_operations.csv')
+        appointments = pd.read_csv('patient_appointments.csv')
+        
+        # Convert date columns to datetime
+        for df in [patients, medical, appointments]:
+            date_cols = [col for col in df.columns if 'date' in col.lower() or 'visit' in col.lower()]
+            for col in date_cols:
+                try:
+                    df[col] = pd.to_datetime(df[col])
+                except:
+                    pass
+        
+        return patients, medical, hospitals, appointments
+    
+    except FileNotFoundError:
+        # Generate sample data if files don't exist
+        return generate_sample_data()
+
+def generate_sample_data():
+    # Set random seed for reproducibility
+    np.random.seed(42)
+    
+    # Patients dataset
+    patients = pd.DataFrame({
+        'patient_id': [f"P{i:03d}" for i in range(1, 1001)],
+        'name': [f"Patient {i}" for i in range(1, 1001)],
+        'age': np.random.randint(18, 90, 1000),
+        'gender': np.random.choice(['Male', 'Female'], 1000),
+        'state': np.random.choice(['MH', 'UP', 'TN', 'WB', 'KA', 'GJ'], 1000),
+        'blood_type': np.random.choice(['A+', 'B+', 'O+', 'AB+', 'A-', 'B-', 'O-', 'AB-'], 1000),
+        'last_visit': pd.date_range(start='2023-01-01', periods=1000, freq='D')
+    })
+    
+    # Medical records
+    medical = pd.DataFrame({
+        'record_id': [f"R{i:04d}" for i in range(1, 3001)],
+        'patient_id': [patients['patient_id'][i % 1000] for i in range(3000)],
+        'diagnosis': np.random.choice(['Hypertension', 'Diabetes', 'TB', 'Heart Disease', 'Asthma'], 3000),
+        'systolic_bp': np.random.randint(90, 180, 3000),
+        'diastolic_bp': np.random.randint(60, 120, 3000),
+        'glucose': np.random.randint(70, 300, 3000),
+        'date': [patients['last_visit'][i % 1000] - timedelta(days=np.random.randint(0, 365)) for i in range(3000)]
+    })
+    
+    # Hospitals
+    hospitals = pd.DataFrame({
+        'hospital_id': [f"H{i:02d}" for i in range(1, 51)],
+        'name': [f"Hospital {i}" for i in range(1, 51)],
+        'beds': np.random.randint(50, 500, 50),
+        'state': np.random.choice(['MH', 'UP', 'TN', 'WB', 'KA', 'GJ'], 50),
+        'specialty': np.random.choice(['Cardiology', 'Oncology', 'General', 'Pediatrics', 'Neurology'], 50)
+    })
+    
+    # Appointments
+    appointments = pd.DataFrame({
+        'appointment_id': [f"A{i:04d}" for i in range(1, 5001)],
+        'patient_id': [patients['patient_id'][i % 1000] for i in range(5000)],
+        'hospital_id': [hospitals['hospital_id'][i % 50] for i in range(5000)],
+        'date': pd.date_range(start='2023-01-01', periods=5000, freq='H'),
+        'status': np.random.choice(['Completed', 'Pending', 'Cancelled'], 5000, p=[0.7, 0.2, 0.1]),
+        'doctor': np.random.choice(['Dr. Smith', 'Dr. Patel', 'Dr. Khan', 'Dr. Sharma', 'Dr. Gupta'], 5000)
+    })
+    
+    # Save data for future use
+    patients.to_csv('indian_patients.csv', index=False)
+    medical.to_csv('indian_medical_records.csv', index=False)
+    hospitals.to_csv('indian_hospital_operations.csv', index=False)
+    appointments.to_csv('patient_appointments.csv', index=False)
+    
+    return patients, medical, hospitals, appointments
+
+# Load data
+patients_df, medical_df, hospitals_df, appointments_df = load_data()
+
+# Merge medical data with patient age for risk calculation
+medical_merged = pd.merge(medical_df, patients_df[['patient_id', 'age']], on='patient_id')
+
+# Risk calculation function
+def calculate_risk(row):
+    try:
+        age_factor = row['age'] * 0.03
+        bp_factor = (row['systolic_bp'] - 120) * 0.05
+        glucose_factor = (row['glucose'] - 100) * 0.01
+        return min(max(1 / (1 + np.exp(-(age_factor + bp_factor + glucose_factor - 2))), 0), 1)
+    except:
+        return 0.5
+
+# Apply risk calculation
+if all(col in medical_merged.columns for col in ['age', 'systolic_bp', 'glucose']):
+    medical_merged['risk_score'] = medical_merged.apply(calculate_risk, axis=1)
+else:
+    medical_merged['risk_score'] = np.random.uniform(0, 1 , len(medical_merged))
+
+# Generate predictive forecast data
+def generate_forecast_data():
+    # Generate last 12 months of patient admissions
+    months = pd.date_range(start='2023-01-01', periods=12, freq='M')
+    
+    # Seasonal pattern with some randomness
+    base_patients = 2000
+    seasonality = np.sin(np.linspace(0, 2*np.pi, 12)) * 300
+    trend = np.linspace(0, 400, 12)
+    noise = np.random.normal(0, 100, 12)
+    
+    # Combine components
+    historical = base_patients + seasonality + trend + noise
+    historical = historical.astype(int)
+    
+    # Forecast next 6 months (with increasing uncertainty)
+    forecast_months = pd.date_range(start='2024-01-01', periods=6, freq='M')
+    forecast_seasonality = np.sin(np.linspace(0, np.pi, 6)) * 300
+    forecast_trend = np.linspace(400, 600, 6)
+    forecast_noise = np.random.normal(0, 150, 6)
+    
+    forecast = base_patients + forecast_seasonality + forecast_trend + forecast_noise
+    forecast = forecast.astype(int)
+    
+    # Combine into dataframe
+    historical_df = pd.DataFrame({
+        'date': months,
+        'patients': historical,
+        'type': 'Historical'
+    })
+    
+    forecast_df = pd.DataFrame({
+        'date': forecast_months,
+        'patients': forecast,
+        'type': 'Forecast'
+    })
+    
+    combined = pd.concat([historical_df, forecast_df])
+    return combined
+
+# Login Page
+def login_page():
+    st.markdown("<h1 style='text-align: center; color: white;'>🏥 HealthAnalytics Pro</h1>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        st.markdown("<div style='background-color: #252638; padding: 20px; border-radius: 10px; border: 1px solid #3A3A5A;'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center; color: white;'>Login</h3>", unsafe_allow_html=True)
+        username = st.text_input("Username")
+        password = st.text_input("Password", type='password')
+        
+        if st.button("Login", key="login_btn"):
+            if username in USERS and USERS[username]['password'] == password:
+                st.session_state.user = {
+                    'role': USERS[username]['role'],
+                    'username': username,
+                    'name': USERS[username]['name']
+                }
+                st.rerun()
+            else:
+                st.error("Invalid credentials")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+# Admin Dashboard
+def admin_dashboard():
+    st.markdown("<h1 style='color: white;'>Hospital Administration Dashboard</h1>", unsafe_allow_html=True)
+    
+    # Tab selection for different views
+    tabs = st.tabs(["Overview", "Resource Planning", "Patient Analytics", "Performance Metrics"])
+    
+    with tabs[0]:  # Overview Tab
+        # Key Metrics Row
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.markdown("<div class='metric-container'>", unsafe_allow_html=True)
+            st.metric("Total Patients", f"{len(patients_df):,}", 
+                      delta=f"{int(len(patients_df)*0.05):,}", 
+                      delta_color="normal")
+            st.markdown("</div>", unsafe_allow_html=True)
+        with col2:
+            st.markdown("<div class='metric-container'>", unsafe_allow_html=True)
+            st.metric("Total Hospitals", f"{len(hospitals_df):,}",
+                     delta="2", delta_color="normal")
+            st.markdown("</div>", unsafe_allow_html=True)
+        with col3:
+            st.markdown("<div class='metric-container'>", unsafe_allow_html=True)
+            st.metric("Avg. Risk Score", f"{medical_merged['risk_score'].mean():.1%}",
+                     delta=f"{0.05:.1%}", delta_color="inverse")
+            st.markdown("</div>", unsafe_allow_html=True)
+        with col4:
+            st.markdown("<div class='metric-container'>", unsafe_allow_html=True)
+            high_risk = len(medical_merged[medical_merged['risk_score'] > 0.7])
+            st.metric("High-Risk Patients", f"{high_risk:,}",
+                     delta=f"{int(high_risk*0.1):,}", delta_color="inverse")
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Main Charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("<div class='chart-container'>", unsafe_allow_html=True)
+            st.subheader("Hourly Patient Visits")
+            # Generate hourly data for the chart
+            hourly_data = pd.DataFrame({
+                'hour': range(8, 18),
+                'visits': np.random.randint(30, 100, 10),
+                'admissions': np.random.randint(10, 50, 10)
+            })
+            fig = px.line(hourly_data, x='hour', y=['visits', 'admissions'], 
+                         labels={'hour': 'Hour of Day', 'value': 'Count'},
+                         title="Patient Flow Analysis",
+                         template="plotly_dark")
+            fig.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                legend_title_text='',
+                xaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)'),
+                yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("<div class='chart-container'>", unsafe_allow_html=True)
+            st.subheader("Diagnosis Distribution")
+            diagnosis_counts = medical_df['diagnosis'].value_counts().reset_index()
+            diagnosis_counts.columns = ['diagnosis', 'count']
+            fig = px.pie(diagnosis_counts, values='count', names='diagnosis', hole=0.4,
+                        template="plotly_dark")
+            fig.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        # State-wise Distribution
+        st.markdown("<div class='chart-container'>", unsafe_allow_html=True)
+        st.subheader("State-wise Patient Distribution")
+        state_counts = patients_df['state'].value_counts().reset_index()
+        state_counts.columns = ['state', 'count']
+        fig = px.bar(state_counts, x='state', y='count', color='count',
+                    color_continuous_scale='Blues',
+                    template="plotly_dark")
+        fig.update_layout(
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(showgrid=False),
+            yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+        with tabs[1]:  # Resource Planning Tab
+           st.subheader("Bed Capacity Planning")
+        
+        # Hospital capacity and utilization
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("<div class='chart-container'>", unsafe_allow_html=True)
+            st.subheader("Hospital Bed Capacity")
+            
+            # Bed capacity by specialty
+            specialty_beds = hospitals_df.groupby('specialty')['beds'].sum().reset_index()
+            fig = px.bar(specialty_beds, x='specialty', y='beds',
+                         color='beds', color_continuous_scale='Viridis',
+                         template="plotly_dark")
+            fig.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("<div class='chart-container'>", unsafe_allow_html=True)
+            st.subheader("Bed Utilization Forecast")
+            
+            # Generate random utilization data
+            utilization_data = pd.DataFrame({
+                'date': pd.date_range(start='2023-01-01', periods=30, freq='D'),
+                'utilization': np.random.uniform(0.6, 0.9, 30),
+                'capacity': 2000
+            })
+            
+            # Calculate beds used
+            utilization_data['beds_used'] = (utilization_data['capacity'] * utilization_data['utilization']).astype(int)
+            
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=utilization_data['date'], 
+                y=utilization_data['beds_used'],
+                mode='lines',
+                name='Beds Used',
+                line=dict(color='#4A4A8A', width=3)
+            ))
+            
+            fig.add_trace(go.Scatter(
+                x=utilization_data['date'],
+                y=[utilization_data['capacity']] * len(utilization_data),
+                mode='lines',
+                name='Total Capacity',
+                line=dict(color='red', width=2, dash='dash')
+            ))
+            
+            fig.update_layout(
+                template="plotly_dark",
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Predictive analytics section
+        st.markdown("<div class='chart-container'>", unsafe_allow_html=True)
+        st.subheader("Patient Admission Forecast (Next 6 Months)")
+        
+        forecast_data = generate_forecast_data()
+        
+        fig = px.line(forecast_data, x='date', y='patients', color='type',
+                     template="plotly_dark",
+                     color_discrete_map={'Historical': '#4A4A8A', 'Forecast': '#8A4A4A'})
+        
+        # Add confidence interval for forecast
+        forecast_subset = forecast_data[forecast_data['type'] == 'Forecast']
+        
+        # Lower and upper bounds (simulating confidence intervals)
+        lower_bound = forecast_subset['patients'] * 0.85
+        upper_bound = forecast_subset['patients'] * 1.15
+        
+        fig.add_trace(go.Scatter(
+            x=forecast_subset['date'],
+            y=upper_bound,
+            fill=None,
+            mode='lines',
+            line_color='rgba(138, 74, 74, 0)',
+            showlegend=False
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=forecast_subset['date'],
+            y=lower_bound,
+            fill='tonexty',
+            mode='lines',
+            line_color='rgba(138, 74, 74, 0)',
+            fillcolor='rgba(138, 74, 74, 0.2)',
+            name='95% Confidence'
+        ))
+        
+        fig.update_layout(
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(showgrid=False),
+            yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)'),
+            legend_title_text=''
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+        with tabs[2]:  # Patient Analytics Tab
+           st.subheader("Patient Risk Analysis")
+        
+        # 3D Visualization
+        st.markdown("<div class='chart-container'>", unsafe_allow_html=True)
+        st.subheader("3D Risk Analysis")
+        sample_df = medical_merged.sample(500)
+        fig = px.scatter_3d(
+            sample_df, 
+            x='age', 
+            y='systolic_bp', 
+            z='glucose',
+            color='risk_score',
+            color_continuous_scale='Bluered',
+            opacity=0.7,
+            template="plotly_dark"
+        )
+        fig.update_layout(
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)'
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Patient cohort analysis
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("<div class='chart-container'>", unsafe_allow_html=True)
+            st.subheader("Age Distribution by Gender")
+            
+            # Create age bins
+            patients_df['age_group'] = pd.cut(patients_df['age'], 
+                                            bins=[0, 18, 30, 45, 60, 75, 100],
+                                            labels=['0-18', '19-30', '31-45', '46-60', '61-75', '76+'])
+            
+            age_gender = patients_df.groupby(['age_group', 'gender']).size().reset_index(name='count')
+            
+            fig = px.bar(age_gender, x='age_group', y='count', color='gender',
+                         barmode='group', template="plotly_dark",
+                         color_discrete_map={'Male': '#4A4A8A', 'Female': '#8A4A4A'})
+            
+            fig.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)'),
+                legend_title_text=''
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("<div class='chart-container'>", unsafe_allow_html=True)
+            st.subheader("Risk Score Distribution")
+            
+            # Create risk score bins
+            medical_merged['risk_category'] = pd.cut(medical_merged['risk_score'],
+                                                   bins=[0, 0.25, 0.5, 0.75, 1.0],
+                                                   labels=['Low', 'Medium', 'High', 'Critical'])
+            
+            risk_counts = medical_merged['risk_category'].value_counts().reset_index()
+            risk_counts.columns = ['risk_category', 'count']
+            
+            # Sort by risk level
+            risk_order = {'Low': 0, 'Medium': 1, 'High': 2, 'Critical': 3}
+            risk_counts['sort'] = risk_counts['risk_category'].map(risk_order)
+            risk_counts = risk_counts.sort_values('sort').drop('sort', axis=1)
+            
+            fig = px.bar(risk_counts, x='risk_category', y='count',
+                         color='risk_category', template="plotly_dark",
+                         color_discrete_map={
+                             'Low': '#4A8A4A', 
+                             'Medium': '#8A8A4A',
+                             'High': '#8A4A4A',
+                             'Critical': '#8A1A1A'
+                         })
+            
+            fig.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)'),
+                showlegend=False
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        # High risk patients table
+        st.markdown("<div class='chart-container'>", unsafe_allow_html=True)
+        st.subheader("High Risk Patients")
+        
+        high_risk_patients = medical_merged[medical_merged['risk_score'] > 0.75].sort_values('risk_score', ascending=False)
+        
+        # Join with patient data
+        high_risk_merged = pd.merge(
+            high_risk_patients,
+            patients_df[['patient_id', 'name', 'gender', 'state', 'blood_type']],
+            on='patient_id'
+        )
+        
+        # Select columns to display
+        display_cols = ['name', 'age', 'gender', 'diagnosis', 'systolic_bp', 'diastolic_bp', 
+                        'glucose', 'risk_score', 'state']
+        
+        high_risk_display = high_risk_merged[display_cols].head(10)
+        
+        # Format risk score as percentage
+        high_risk_display['risk_score'] = high_risk_display['risk_score'].apply(lambda x: f"{x:.1%}")
+        
+        st.dataframe(high_risk_display, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+        with st.tabs[3]:  # Performance Metrics Tab
+            st.subheader("Hospital Performance Analytics")
+        
+        # KPI metrics
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("<div class='metric-container'>", unsafe_allow_html=True)
+            completed = len(appointments_df[appointments_df['status'] == 'Completed'])
+            total = len(appointments_df)
+            completion_rate = completed / total
+            
+            st.metric("Appointment Completion Rate", f"{completion_rate:.1%}", 
+                      delta=f"{0.05:.1%}", delta_color="normal")
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("<div class='metric-container'>", unsafe_allow_html=True)
+            st.metric("Average Wait Time", "24 mins", 
+                      delta="-3 mins", delta_color="normal")
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown("<div class='metric-container'>", unsafe_allow_html=True)
+            st.metric("Patient Satisfaction", "4.2/5", 
+                      delta="0.3", delta_color="normal")
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Performance charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("<div class='chart-container'>", unsafe_allow_html=True)
+            st.subheader("Appointment Status by Hospital")
+            
+            # Get top 5 hospitals by appointment count
+            top_hospitals = appointments_df['hospital_id'].value_counts().head(5).index.tolist()
+            
+            # Filter for those hospitals
+            hospital_appointments = appointments_df[appointments_df['hospital_id'].isin(top_hospitals)]
+            
+            # Group by hospital and status
+            hospital_status = hospital_appointments.groupby(['hospital_id', 'status']).size().reset_index(name='count')
+            
+            fig = px.bar(hospital_status, x='hospital_id', y='count', color='status',
+                        barmode='stack', template="plotly_dark",
+                        color_discrete_map={
+                            'Completed': '#4A8A4A',
+                            'Pending': '#4A8A4A',
+                            'Cancelled': '#8A4A4A'
+                        })
+            
+            fig.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)'),
+                legend_title_text=''
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("<div class='chart-container'>", unsafe_allow_html=True)
+            st.subheader("Doctor Performance")
+            
+            # Doctor performance data
+            doctor_performance = appointments_df[appointments_df['status'] == 'Completed']
+            doctor_performance = doctor_performance['doctor'].value_counts().reset_index()
+            doctor_performance.columns = ['doctor', 'completed_appointments']
+            
+            fig = px.bar(doctor_performance.head(5), x='doctor', y='completed_appointments',
+                        color='completed_appointments', template="plotly_dark",
+                        color_continuous_scale='Blues')
+            
+            fig.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)'),
+                showlegend=False
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+
+# Main function to run the app
+def main():
+    if st.session_state.user is None:
+        login_page()
+    else:
+        if st.session_state.user['role'] == 'Admin':
+            admin_dashboard()
+        # Additional roles can be added here
+
+if _name_ == "_main_":
+    main()
