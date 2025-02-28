@@ -88,16 +88,6 @@ MIT
 We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.md) for details.
 
 ---
-
- Access Credentials
-For demonstration purposes only:
-
-User ID options: admin, patient, doctor
-
-Password: 1234
-
-⚠️ IMPORTANT: These are default credentials for testing purposes only. In a production environment, strong unique passwords should be implemented.
-
 ⭐ Star this repository if you find it helpful!
 
 Made with ❤️ by the MEDCHAIN team
