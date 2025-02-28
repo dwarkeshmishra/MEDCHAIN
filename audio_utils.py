@@ -12,6 +12,7 @@ class AudioRecorder:
         self.is_recording = False
         self.sample_rate = 44100
         self.audio_data = []
+        self.stream = None  # Initialize stream to None
 
     def check_audio_devices(self):
         """Check for available audio input devices."""
@@ -44,12 +45,16 @@ class AudioRecorder:
 
     def stop_recording(self):
         """Stop recording audio and return the audio file path."""
-        self.stream.stop()
-        self.stream.close()
-        self.is_recording = False
-        audio_file = self.save_audio()
-        print("Recording stopped.")
-        return audio_file
+        if self.stream is not None:  # Check if stream is initialized
+            self.stream.stop()
+            self.stream.close()
+            self.is_recording = False
+            audio_file = self.save_audio()
+            print("Recording stopped.")
+            return audio_file
+        else:
+            print("No recording in progress.")
+            return None  # Or handle this case as needed
 
     def save_audio(self):
         """Save the recorded audio to a file."""
@@ -71,8 +76,8 @@ class AudioRecorder:
         except Exception as e:
             print(f"Transcription error: {str(e)}")
             return f"Transcription failed: {str(e)}"
-
-class AudioNoteManager:
+            
+   class AudioNoteManager:
     def __init__(self, api_key):
         self.recorder = AudioRecorder(api_key)
         self.notes = {}
