@@ -76,8 +76,8 @@ class AudioRecorder:
         except Exception as e:
             print(f"Transcription error: {str(e)}")
             return f"Transcription failed: {str(e)}"
-            
-   class AudioNoteManager:
+
+class AudioNoteManager:
     def __init__(self, api_key):
         self.recorder = AudioRecorder(api_key)
         self.notes = {}
