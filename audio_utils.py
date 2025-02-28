@@ -13,13 +13,28 @@ class AudioRecorder:
         self.sample_rate = 44100
         self.audio_data = []
 
+    def check_audio_devices(self):
+        """Check for available audio input devices."""
+        devices = sd.query_devices()
+        if not any(device['max_input_channels'] > 0 for device in devices):
+            raise RuntimeError("No audio input devices found.")
+        return devices
+
     def start_recording(self):
         """Start recording audio."""
-        self.is_recording = True
-        self.audio_data = []  # Clear previous audio data
-        self.stream = sd.InputStream(samplerate=self.sample_rate, channels=1, callback=self.audio_callback)
-        self.stream.start()
-        print("Recording started...")
+        try:
+            self.check_audio_devices()  # Check for available audio devices
+            self.is_recording = True
+            self.audio_data = []  # Clear previous audio data
+            self.stream = sd.InputStream(samplerate=self.sample_rate, channels=1, callback=self.audio_callback)
+            self.stream.start()
+            print("Recording started...")
+        except RuntimeError as e:
+            print(f"Audio device error: {e}")
+            return f"Audio device error: {e}"
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")
+            return f"An error occurred: {str(e)}"
 
     def audio_callback(self, indata, frames, time, status):
         """Callback function to store audio data."""
