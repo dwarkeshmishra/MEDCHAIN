@@ -45,9 +45,17 @@ class AudioRecorder:
 
     def transcribe_audio(self, audio_file):
         """Transcribe the audio file using the Groq API."""
-        # Implement transcription logic here
-        # This is a placeholder for the actual transcription logic
-        return "Transcription of the audio."
+        try:
+            with open(audio_file, "rb") as file:
+                transcription = self.client.audio.transcriptions.create(
+                    file=(audio_file, file.read()),
+                    model="whisper-large-v3-turbo",
+                    response_format="verbose_json",
+                )
+                return transcription.text
+        except Exception as e:
+            print(f"Transcription error: {str(e)}")
+            return f"Transcription failed: {str(e)}"
 
 class AudioNoteManager:
     def __init__(self, api_key):
