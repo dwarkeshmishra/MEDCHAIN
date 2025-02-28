@@ -32,9 +32,13 @@ class AudioRecorder:
             print("Recording started...")
         except RuntimeError as e:
             print(f"Audio device error: {e}")
+            self.is_recording = False  # Ensure is_recording is set to False
+            self.stream = None  # Reset stream to None
             return f"Audio device error: {e}"
         except Exception as e:
             print(f"An error occurred: {str(e)}")
+            self.is_recording = False  # Ensure is_recording is set to False
+            self.stream = None  # Reset stream to None
             return f"An error occurred: {str(e)}"
 
     def audio_callback(self, indata, frames, time, status):
@@ -89,6 +93,8 @@ class AudioNoteManager:
     def stop_and_save(self, patient_id):
         """Stop recording and save transcription to patient's notes"""
         audio_file = self.recorder.stop_recording()
+        if audio_file is None:
+            return "No audio file to transcribe."  # Handle case where recording didn't happen
         transcription = self.recorder.transcribe_audio(audio_file)
         
         if patient_id not in self.notes:
