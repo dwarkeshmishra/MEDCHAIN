@@ -130,8 +130,6 @@ USERS = {
     }
 }
 
-GROQ_API_KEY = "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"
-
 
 @st.cache_data
 def generate_sample_data():
@@ -409,7 +407,7 @@ def admin_dashboard():
 
 def doctor_dashboard():
     if 'note_manager' not in st.session_state:
-        st.session_state.note_manager = AudioNoteManager("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")
+        st.session_state.note_manager = AudioNoteManager("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")
 
     st.markdown("<h1 style='color: white;'>Doctor Dashboard</h1>",
                 unsafe_allow_html=True)
